@@ -1,0 +1,280 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Importing Datasets
+
+item = pd.read_excel('D:/Python/tidyquant/ITEM_MERCH_MASTERFILE_TestData.xlsx')
+sales = pd.read_excel('D:/Python/tidyquant/Sales Sample Data.xlsx')
+
+#Joining sales with item Dataframe
+
+Data = pd.merge(sales,item, on ='SKU', how = 'left')
+
+### As the Date attributes has been already preprocessed and splited into date, month, and year. Its better to drop these columns. And the data provided contains only one year i.e 2018. So, it does not really contribute for sales prediction. So, its better to drop year column as well.
+
+Data = Data.drop(['TRANS POSTED DATE','TRANS ACTUAL DATE','TRANS POSTED YEAR','TRANS ACTUAL YEAR'], axis = 1)
+
+# Let's check if the data has null values
+Data.isnull().sum()
+
+plt.figure(figsize = (8,8))
+sns.heatmap(Data.isnull())
+plt.title('NUll value Plot')
+plt.xlabel('Attributes')
+plt.ylabel('Count')
+
+# Only after performing EDA 
+
+sns.countplot(Data.BRAND_x)
+plt.title('Brand Popularity')
+
+# majority of products are from Brand C
+
+# Month with most sales
+
+sns.countplot(Data['TRANS ACTUAL MONTH'] )
+plt.ylabel('Number of sales')
+plt.xlabel('Month')
+plt.title('Month Wise Sales')
+
+plt.figure(figsize = (10,8))
+sns.barplot(Data['TRANS ACTUAL DAY'], Data['TRANS ACTUAL MONTH'] == 12 )
+plt.title('Dacember Sales')
+plt.ylabel('Sales Count')
+plt.xlabel('Date')
+
+
+# It can be seen that most of the transaction are done in December. on 31st.
+
+sns.countplot(Data['TRANS TYPE'])
+
+# Most of TRANS TYPE is ST-ITEMS.
+
+sns.distplot(Data['UNIT PRICE'])
+plt.title('Price Distribution')
+plt.ylabel('Sales Count')
+# From the price distribution plot it can be seen that distribution is Skewed. Most transaction belongs to the range of 1500-4500
+
+sns.countplot(Data.GENDER)
+plt.title('Product type')
+
+
+sns.countplot(Data['DIAL TYPE'])
+plt.title('Dial Type')
+
+sns.countplot(Data['DIAL COLOR'])
+plt.xticks(rotation = 45)
+plt.title('Dial Color')
+
+sns.countplot(Data['STRAP TYPE'])
+plt.xticks(rotation = 45)
+plt.title('Strap Color')
+
+sns.countplot(Data['STRAP COLOR'])
+plt.xticks(rotation = 45)
+plt.title('Strap Color')
+
+
+# Original Price plot
+Data['ORIGINAL PRICE'].value_counts().sort_index().plot.line()
+plt.title('Price line plot')
+plt.xlabel('Price')
+plt.ylabel('Count')
+
+
+# Location Plot
+
+sns.countplot(Data['LOCATION CODE'])
+plt.xlabel('Location')
+plt.ylabel('Sales Count')
+plt.title('Location wise sales')
+plt.xticks(rotation = 45)
+# This was the univariate  analysis
+
+sns.barplot(Data['LOCATION CODE'], Data['TRANS ACTUAL MONTH'])
+
+sns.countplot(Data['CREDIT MEMO UNITS'])
+
+sns.countplot(Data['CATEGORY.1'])
+plt.xticks(rotation = 45)
+plt.title('Category 1')
+
+
+
+
+
+sns.countplot(Data['TECHNOLOGY'])
+
+
+ # This was the univariant analysis
+
+# Bivariant analysis
+
+
+sns.scatterplot(Data['ORIGINAL PRICE'],Data['INVOICED AMOUNT '], s = 200)
+plt.title('Sales/Discount plot')
+
+
+Data['ORIGINAL PRICE'].value_counts().sort_index().plot.area()
+Data['INVOICED AMOUNT '].value_counts().sort_index().plot.area()
+plt.xlim(0,10000)
+plt.legend()
+plt.xlabel('Amount')
+plt.ylabel('Sales Count')
+plt.title('Sales/Discount plot')
+
+
+sns.pairplot(Data)
+
+# Removing unecessary columns
+
+df = Data.drop(['TRANS DOC NUMBER','SKU','BRAND_y', 'PRICE RANGE','COLLECTION',
+                'CASE MATERIAL','CASE COLOR', 'CASE SHAPE', 'CASE SIZE','CATEGORY.1'], axis = 1)
+
+# Due to large number of catergories it's better to use Label Encoding for all categorical variables. Using Label Encoding for ordinal and one hot encoding for nominal variable will increase the dimenshnality too much.
+
+# Let's devide the location column column to location code only .
+df[['CODE','LOCATION']] = df['LOCATION CODE'].str.split(" ", expand = True)
+df['LOCATION']  = df['LOCATION'].astype(int)
+
+df = df.drop(['CODE','LOCATION CODE'], axis = 1)
+
+sns.jointplot(df['ORIGINAL PRICE'], df['INVOICED AMOUNT '], kind = 'hex', cmap = 'hot', size = 200)
+
+sns.pointplot( df['LOCATION'],df['TRANS ACTUAL MONTH'] )
+plt.title('Location & Month')
+
+
+
+
+
+# Preparing data for clustering
+from sklearn.preprocessing import LabelEncoder
+cols = df[['TRANS TYPE', 'SALES ACTIVITY CODE', 'CATEGORY', 
+       'LINE_UP','GENDER',  
+       'DIAL TYPE']]
+
+one_hot = pd.get_dummies(df[[ 'STRAP TYPE','DIAL COLOR',
+                             'STRAP COLOR', 'TECHNOLOGY']], drop_first = True)
+Labeled_category = cols.apply(lambda x: LabelEncoder().fit_transform(x))
+
+df.rename(columns = {'BRAND_x' : "BRAND"}, inplace = True)
+train = pd.concat([df['BRAND'], Labeled_category,df.select_dtypes(include = 'number'),
+                    one_hot], axis =1 )
+
+
+
+
+sns.countplot(train.BRAND)
+plt.title('Brand Popularity')
+plt.xlabel('Brand')
+plt.ylabel('Count')
+
+
+
+# let's split the training data for differnt brands
+
+Brand_A = train[train.BRAND == 'Brand A'].drop('BRAND', axis = 1)
+Brand_B = train[train.BRAND == 'Brand B'].drop('BRAND', axis = 1)
+Brand_C = train[train.BRAND == 'Brand C'].drop('BRAND', axis = 1)
+
+# As the model i will be using is K Means clustering .So, its better to standardize training data.
+
+from sklearn.preprocessing import StandardScaler
+scaled_A = StandardScaler().fit_transform(Brand_A)
+scaled_B = StandardScaler().fit_transform(Brand_B)
+scaled_C = StandardScaler().fit_transform(Brand_C)
+
+
+
+
+
+from sklearn.cluster import  KMeans
+
+n_clusters=10
+cost=[]
+for i in range(1,n_clusters):
+    kmean= KMeans(i)
+    kmean.fit(Brand_A)
+    cost.append(kmean.inertia_) 
+
+
+plt.plot(cost)
+plt.xlabel('Number of clusters')
+plt.ylabel('Sum of Square')
+plt.title('Optimal Number of Clusters')
+
+# By plotting the chart 2 number of cluster seem good idea.
+
+
+
+kmean= KMeans(2)
+kmean.fit(scaled_A)
+Brand_A['label'] =kmean.labels_
+
+# Beand B
+
+kmean= KMeans(2)
+kmean.fit(scaled_B)
+Brand_B['label']=  kmean.labels_
+
+# Brand C
+
+kmean= KMeans(2)
+kmean.fit(scaled_C)
+Brand_C['label'] =kmean.labels_
+
+
+
+ # Brand C could be divided into more cluster as it has much more records than other brand. For relativity between brand number of clusters are same.
+
+sns.pairplot(Brand_B)
+
+# Reducing dimension with PCA for visualizing clusters.
+from sklearn.decomposition import PCA
+pca = PCA(2)
+PCA_a= pca.fit_transform(Brand_A.iloc[:,:-1])
+
+x_a, y_a = PCA_a[:, 0], PCA_a[:, 1]
+sns.scatterplot(x_a,y_a, hue= Brand_A.label, s = 200, cmap = 'Blues', edgecolors="grey")
+plt.title('Brand A Cluster')
+
+# Brand b
+PCA_b= pca.fit_transform(Brand_B.iloc[:,:-1])
+
+x_b, y_b = PCA_b[:, 0], PCA_b[:, 1]
+sns.scatterplot(x_b,y_b, hue= Brand_B.label, s = 200, cmap = 'Blues', edgecolors="grey")
+plt.title('Brand B Cluster')
+
+# brand c
+PCA_c= pca.fit_transform(Brand_C.iloc[:,:-1])
+
+x_c, y_c = PCA_c[:, 0], PCA_c[:, 1]
+sns.scatterplot(x_c,y_c, hue= Brand_C.label, s = 200, cmap = 'Blues', edgecolors="grey")
+plt.title('Brand C Cluster')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
